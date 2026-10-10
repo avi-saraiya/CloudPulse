@@ -3,6 +3,10 @@ package com.cloudpulse.entity;
 import jakarta.persistence.*;
 import java.time.OffsetDateTime;
 
+/**
+ * Entity representing a metric observation recorded for a service.
+ * Note: error_rate is stored strictly as a fraction (e.g., 0.05 represents 5%).
+ */
 @Entity
 @Table(name = "metrics")
 public class MetricEntity {
@@ -15,31 +19,37 @@ public class MetricEntity {
     @JoinColumn(name = "service_id", nullable = false)
     private ServiceEntity service;
 
-    @Column(name = "metric_type", nullable = false)
-    private String metricType;
+    @Column(name = "latency_ms", nullable = false)
+    private Double latencyMs;
 
-    @Column(nullable = false)
-    private Double value;
+    /**
+     * Stored as a fraction between 0.00 and 1.00 (e.g., 0.05 = 5%).
+     */
+    @Column(name = "error_rate", nullable = false)
+    private Double errorRate;
 
     @Column(name = "recorded_at", nullable = false, updatable = false)
     private OffsetDateTime recordedAt;
 
     public MetricEntity() {}
 
-    public MetricEntity(ServiceEntity service, String metricType, Double value) {
+    public MetricEntity(ServiceEntity service, Double latencyMs, Double errorRate) {
         this.service = service;
-        this.metricType = metricType;
-        this.value = value;
+        this.latencyMs = latencyMs;
+        this.errorRate = errorRate;
         this.recordedAt = OffsetDateTime.now();
     }
 
+    // Getters
     public Long getId() { return id; }
     public ServiceEntity getService() { return service; }
-    public String getMetricType() { return metricType; }
-    public Double getValue() { return value; }
+    public Double getLatencyMs() { return latencyMs; }
+    public Double getErrorRate() { return errorRate; }
     public OffsetDateTime getRecordedAt() { return recordedAt; }
 
+    // Setters
     public void setService(ServiceEntity service) { this.service = service; }
-    public void setMetricType(String metricType) { this.metricType = metricType; }
-    public void setValue(Double value) { this.value = value; }
+    public void setLatencyMs(Double latencyMs) { this.latencyMs = latencyMs; }
+    public void setErrorRate(Double errorRate) { this.errorRate = errorRate; }
+    public void setRecordedAt(OffsetDateTime recordedAt) { this.recordedAt = recordedAt; }
 }

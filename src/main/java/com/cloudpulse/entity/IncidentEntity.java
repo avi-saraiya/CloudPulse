@@ -3,6 +3,9 @@ package com.cloudpulse.entity;
 import jakarta.persistence.*;
 import java.time.OffsetDateTime;
 
+/**
+ * Entity representing an operational incident triggered by an alert.
+ */
 @Entity
 @Table(name = "incidents")
 public class IncidentEntity {
@@ -16,10 +19,13 @@ public class IncidentEntity {
     private AlertEntity alert;
 
     @Column(nullable = false)
-    private String status; // e.g., "OPEN", "RESOLVED"
+    private String status; // e.g., "OPEN", "ACKNOWLEDGED", "RESOLVED"
 
-    @Column(name = "triggered_at", nullable = false, updatable = false)
-    private OffsetDateTime triggeredAt;
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private OffsetDateTime createdAt;
+
+    @Column(name = "acknowledged_at")
+    private OffsetDateTime acknowledgedAt;
 
     @Column(name = "resolved_at")
     private OffsetDateTime resolvedAt;
@@ -29,16 +35,21 @@ public class IncidentEntity {
     public IncidentEntity(AlertEntity alert, String status) {
         this.alert = alert;
         this.status = status;
-        this.triggeredAt = OffsetDateTime.now();
+        this.createdAt = OffsetDateTime.now();
     }
 
+    // Getters
     public Long getId() { return id; }
     public AlertEntity getAlert() { return alert; }
     public String getStatus() { return status; }
-    public OffsetDateTime getTriggeredAt() { return triggeredAt; }
+    public OffsetDateTime getCreatedAt() { return createdAt; }
+    public OffsetDateTime getAcknowledgedAt() { return acknowledgedAt; }
     public OffsetDateTime getResolvedAt() { return resolvedAt; }
 
+    // Setters
     public void setAlert(AlertEntity alert) { this.alert = alert; }
     public void setStatus(String status) { this.status = status; }
+    public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }
+    public void setAcknowledgedAt(OffsetDateTime acknowledgedAt) { this.acknowledgedAt = acknowledgedAt; }
     public void setResolvedAt(OffsetDateTime resolvedAt) { this.resolvedAt = resolvedAt; }
 }
