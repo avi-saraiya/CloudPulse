@@ -32,11 +32,11 @@ public class ServiceEntity {
         this.status = status;
         this.createdAt = OffsetDateTime.now();
     }
-
+    // Getters methods
     public Long getId() { return id; }
     public String getName() { return name; }
     public String getStatus() { return status; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
-
+    // Setter methods
     public void setStatus(String status) { this.status = status; }
 }
