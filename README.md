@@ -86,6 +86,15 @@ to re-run and never delete data.
 
 ## 3. Run on local Kubernetes (kind)
 
+**One command** (creates the cluster, builds and loads the image, creates the DB secret, deploys PostgreSQL,
+CloudPulse, Prometheus and Grafana, then checks health; safe to run again):
+
+```bash
+./scripts/setup-local.sh
+```
+
+The manual steps it performs:
+
 ```bash
 kind create cluster --name cloudpulse
 docker build -t cloudpulse:local .
@@ -105,6 +114,8 @@ The app may restart once on first deploy if it starts before PostgreSQL is ready
 automatically, and it's ready after that.
 
 ## 4. Add Prometheus and Grafana
+
+(`setup-local.sh` already does this.)
 
 ```bash
 kubectl apply -f monitoring/
