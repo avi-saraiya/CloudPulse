@@ -2,6 +2,7 @@ package com.cloudpulse.controller;
 
 import com.cloudpulse.entity.ServiceEntity;
 import com.cloudpulse.repository.ServiceRepository;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -25,7 +26,8 @@ public class ServiceController {
     // GET /api/services -> all three simulated services with their current status
     @GetMapping("/services")
     public List<ServiceEntity> getAllServices() {
-        return serviceRepository.findAll();
+        // Sort by id so the list order never changes (PostgreSQL returns rows in no guaranteed order)
+        return serviceRepository.findAll(Sort.by("id"));
     }
 
     // GET /api/services/1 -> one service, or 404 if the id does not exist

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<!-- Spring Boot serves files in src/main/resources/static/ automatically, so this page is http://localhost:8080/ -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <!-- Makes the layout scale properly on phones -->
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CloudPulse</title>
+    <!-- Empty icon so the browser does not request a missing /favicon.ico -->
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+    <h1>CloudPulse</h1>
+    <p class="subtitle">Service reliability &amp; incident response (educational simulation)</p>
+    <!-- app.js writes "Updated 12:00:05" or an error message here -->
+    <p id="status-line" class="muted">Loading…</p>
+</header>
+
+<main>
+    <!-- 1. Which services exist and how healthy they are -->
+    <section>
+        <h2>Services</h2>
+        <table>
+            <thead>
+            <tr><th>Service</th><th>Status</th><th>Mode</th><th>Latency</th><th>Error rate</th></tr>
+            </thead>
+            <tbody id="services-body">
+            <tr><td colspan="5" class="muted">Loading…</td></tr>
+            </tbody>
+        </table>
+    </section>
+
+    <!-- 2. Buttons that break or fix a service on purpose -->
+    <section>
+        <h2>Failure simulation</h2>
+        <div class="controls">
+            <label>Service
+                <select id="service-select"></select>
+            </label>
+            <!-- data-action tells app.js which /api/simulation/... endpoint to call -->
+            <button data-action="latency-spike">Latency spike</button>
+            <button data-action="error-spike">Error spike</button>
+            <button data-action="outage">Outage</button>
+            <button data-action="restore" class="secondary">Restore all</button>
+        </div>
+    </section>
+
+    <!-- 3. Incidents: the operator acknowledges and resolves them here -->
+    <section>
+        <h2>Incidents</h2>
+        <table>
+            <thead>
+            <tr><th>#</th><th>Service</th><th>Rule</th><th>Status</th><th>Created (UTC)</th>
+                <th>Acknowledged</th><th>Resolved</th><th>Actions</th></tr>
+            </thead>
+            <tbody id="incidents-body">
+            <tr><td colspan="8" class="muted">Loading…</td></tr>
+            </tbody>
+        </table>
+    </section>
+
+    <p class="muted">Deep diagnostic charts live in Grafana. This page only manages services and incidents.</p>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
