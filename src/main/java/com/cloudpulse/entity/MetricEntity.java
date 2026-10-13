@@ -2,6 +2,7 @@ package com.cloudpulse.entity;
 
 import jakarta.persistence.*;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 /**
  * Entity representing a metric observation recorded for a service.
@@ -15,7 +16,8 @@ public class MetricEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    // EAGER: always load the parent row too, so the JSON response can include it
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "service_id", nullable = false)
     private ServiceEntity service;
 
@@ -37,7 +39,7 @@ public class MetricEntity {
         this.service = service;
         this.latencyMs = latencyMs;
         this.errorRate = errorRate;
-        this.recordedAt = OffsetDateTime.now();
+        this.recordedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     // Getters

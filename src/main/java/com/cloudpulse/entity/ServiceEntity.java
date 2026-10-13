@@ -5,6 +5,7 @@ package com.cloudpulse.entity;
 // imports java persistent API to define methods to query the database
 import jakarta.persistence.*;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 @Entity
 @Table(name = "services")
@@ -30,7 +31,7 @@ public class ServiceEntity {
     public ServiceEntity(String name, String status) {
         this.name = name;
         this.status = status;
-        this.createdAt = OffsetDateTime.now();
+        this.createdAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
     // Getters methods
     public Long getId() { return id; }

@@ -2,6 +2,7 @@ package com.cloudpulse.entity;
 
 import jakarta.persistence.*;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 /**
  * Entity representing an operational incident triggered by an alert.
@@ -14,7 +15,8 @@ public class IncidentEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    // EAGER: always load the parent row too, so the JSON response can include it
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "alert_id", nullable = false)
     private AlertEntity alert;
 
@@ -35,7 +37,7 @@ public class IncidentEntity {
     public IncidentEntity(AlertEntity alert, String status) {
         this.alert = alert;
         this.status = status;
-        this.createdAt = OffsetDateTime.now();
+        this.createdAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     // Getters
