@@ -1,0 +1,100 @@
+# CloudPulse CI/CD pipeline (GitHub Actions).
+# On every push or pull request to main, GitHub starts a fresh Ubuntu machine ("runner") and:
+#   test -> package -> build a Docker image tagged with the commit -> deploy it to a throwaway
+#   Kubernetes cluster (kind) inside the runner -> check that the app is healthy.
+# If any step fails, the run stops and is shown as failed (red X) on GitHub.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Download the repository code onto the runner
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # 2. Install Java 21 and cache downloaded Maven dependencies between runs (faster builds)
+      - name: Set up Java 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      # 3. Run the unit tests. A failing test fails the whole pipeline, so nothing broken is deployed.
+      - name: Test
+        run: ./mvnw -B test
+
+      # Keep the test reports downloadable from the run page, even when tests fail
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-reports
+          path: target/surefire-reports/
+
+      # 4. Build the jar (tests already ran above)
+      - name: Package
+        run: ./mvnw -B package -DskipTests
+
+      # 5. Build the Docker image. The tag is the first 7 characters of the commit hash,
+      #    so every image can be traced back to the exact code it was built from (never "latest").
+      - name: Build Docker image
+        run: |
+          echo "IMAGE_TAG=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          docker build -t cloudpulse:${GITHUB_SHA::7} .
+
+      # 6. Create a temporary kind Kubernetes cluster on the runner (deleted when the run ends)
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: cloudpulse
+
+      # 7. Deploy exactly the image we just built, using the same manifests as local development
+      - name: Deploy to kind
+        run: |
+          kind load docker-image cloudpulse:$IMAGE_TAG --name cloudpulse
+          kubectl apply -f k8s/namespace.yaml
+          # Throwaway cluster, so a random password is fine. It is generated here and never printed or stored.
+          kubectl -n cloudpulse create secret generic cloudpulse-db \
+            --from-literal=username=cloudpulse --from-literal=password="$(openssl rand -hex 16)"
+          kubectl apply -f k8s/
+          kubectl -n cloudpulse set image deployment/cloudpulse cloudpulse=cloudpulse:$IMAGE_TAG
+          kubectl -n cloudpulse rollout status deployment/postgres --timeout=180s
+          kubectl -n cloudpulse rollout status deployment/cloudpulse --timeout=300s
+
+      # 8. Smoke test: the app is ready (DB connected) and the API returns the three seeded services
+      - name: Verify deployment
+        run: |
+          kubectl -n cloudpulse exec deployment/cloudpulse -- wget -qO- localhost:8080/actuator/health/readiness
+          kubectl -n cloudpulse exec deployment/cloudpulse -- wget -qO- localhost:8080/api/services | grep -q "Payment API"
+          echo "Deployed cloudpulse:$IMAGE_TAG successfully"
+
+      # If anything failed, print pod status and app logs to help debugging
+      - name: Show debug info on failure
+        if: failure()
+        run: |
+          kubectl -n cloudpulse get pods -o wide || true
+          kubectl -n cloudpulse logs deployment/cloudpulse --tail=100 || true
+
+      # ---- AWS version of steps 6-8 (not enabled: needs the Terraform infrastructure and AWS access) ----
+      # Would log in to AWS with OIDC (no stored keys), push the image to ECR and deploy to EKS:
+      #
+      # - uses: aws-actions/configure-aws-credentials@v5
+      #   with:
+      #     role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+      #     aws-region: us-east-1
+      # - uses: aws-actions/amazon-ecr-login@v2
+      # - run: |
+      #     docker tag cloudpulse:$IMAGE_TAG $ECR_URL:$IMAGE_TAG && docker push $ECR_URL:$IMAGE_TAG
+      #     aws eks update-kubeconfig --region us-east-1 --name cloudpulse-eks
+      #     kubectl -n cloudpulse set image deployment/cloudpulse cloudpulse=$ECR_URL:$IMAGE_TAG
+      #     kubectl -n cloudpulse rollout status deployment/cloudpulse --timeout=300s
