@@ -52,3 +52,5 @@ kubeconfig*
 *.tfstate.*
 *.tfvars
 !*.tfvars.example
+tfplan
+*.tfplan

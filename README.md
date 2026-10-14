@@ -24,7 +24,7 @@ watch the same numbers from the outside.
                                                                                   (alert rules)   (dashboard)
 
  GitHub push ──▶ GitHub Actions: test → package → docker build → deploy to kind → smoke test
- Terraform (infra/terraform) ──▶ AWS: VPC + ECR + EKS   (written and validated, never applied)
+ Terraform (infra/terraform) ──▶ AWS: VPC + ECR + EKS   (deployed and verified; destroyed when not in use)
 ```
 
 | Technology | What it does in CloudPulse |
@@ -53,6 +53,7 @@ Grafana *diagnoses* behavior with charts. The UI never talks to Prometheus.
 | kind | 0.33 | local Kubernetes |
 | kubectl | 1.37 | talking to Kubernetes |
 | Terraform | 1.16 | `infra/terraform` (optional) |
+| AWS CLI | 2.38 | AWS deployment (optional) |
 
 Maven doesn't need to be installed: the project includes the Maven Wrapper (`./mvnw`).
 
@@ -138,11 +139,37 @@ test → upload test reports → package → build image `cloudpulse:<commit>` �
 deploy → check readiness and the API. A failing test stops the pipeline before anything is deployed.
 Results are in the repository's **Actions** tab. The AWS (ECR/EKS) steps are present but commented out.
 
-## 6. AWS with Terraform (optional, costs money)
+## 6. AWS: EKS with Terraform (optional, costs money)
 
-See [`infra/terraform/README.md`](infra/terraform/README.md). The configuration validates, but **nothing has
-been created in AWS**. EKS, EC2 nodes and the NAT gateway are billed hourly, so check pricing first,
-run `terraform plan` before `apply`, and `terraform destroy` afterwards.
+> ⚠️ **Not free:** about **$0.24/hour (~$5.75/day)** in us-east-1 while it exists (EKS control plane, 2 × t3.medium
+> nodes, NAT gateway). Prices as of October 2026; check the AWS Pricing Calculator. Destroy it when you're done.
+
+`infra/terraform/` creates a VPC (private subnets + 1 NAT gateway), an ECR registry (immutable tags, scan on push),
+and an EKS cluster with 2 nodes and the EBS CSI driver (so Postgres gets an encrypted gp3 disk).
+
+**Prerequisites:** AWS CLI v2, plus an IAM Identity Center (SSO) login. **Don't use root access keys.**
+
+```bash
+aws configure sso --use-device-code          # once; profile name: cloudpulse
+aws sso login --profile cloudpulse           # when the session has expired
+export AWS_PROFILE=cloudpulse
+
+# 1. Create the infrastructure (~15-20 min). Review the plan before applying.
+cd infra/terraform && terraform init && terraform plan -out=tfplan && terraform apply tfplan && cd ../..
+
+# 2. Deploy: pushes the image to ECR (tagged with the commit), applies k8s/ + k8s/aws/ + monitoring/, checks health
+./scripts/deploy-aws.sh
+
+# 3. Use it privately (nothing is exposed to the internet)
+kubectl --context cloudpulse-eks -n cloudpulse port-forward svc/cloudpulse 8080:8080
+
+# 4. Shut everything down. Deletes the namespace first so the Postgres EBS disk is removed too,
+#    then runs terraform destroy (asks for "yes"). THIS DELETES THE DATABASE.
+./scripts/destroy-aws.sh
+```
+
+To bring it back later, repeat steps 1 and 2. Both scripts are safe to re-run, and `deploy-aws.sh` leaves your
+default `kubectl` context unchanged (AWS is only reached through `--context cloudpulse-eks`).
 
 ---
 
@@ -192,7 +219,7 @@ The step-by-step operator procedure is in `docs/runbooks/high-latency.md`.
 ```bash
 docker compose down -v                     # Compose: stop and delete the database volume
 kind delete cluster --name cloudpulse      # Kubernetes: deletes the cluster and everything in it
-# AWS (only if it was ever applied): cd infra/terraform && terraform destroy
+AWS_PROFILE=cloudpulse ./scripts/destroy-aws.sh   # AWS: stops all charges, deletes the database
 ```
 
 ## Limitations
@@ -214,5 +241,5 @@ kind delete cluster --name cloudpulse      # Kubernetes: deletes the cluster and
 | Kubernetes (kind) | Locally verified |
 | Prometheus + Grafana | Locally verified (alert fired and cleared) |
 | GitHub Actions | Verified on GitHub (build, deploy to kind, smoke test) |
-| Terraform | `validate` passes; `plan` not run (no AWS credentials) |
-| AWS / EKS | **Not deployed** |
+| Terraform | Applied successfully (61 resources) on 2026-10-13 |
+| AWS / EKS | Cloud verified: UI incident flow, Prometheus alert fired and cleared, Grafana live (see `docs/IMPLEMENTATION_STATUS.md` for current state) |
