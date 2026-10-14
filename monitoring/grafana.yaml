@@ -151,6 +151,11 @@ spec:
             # Open our dashboard as the home page
             - name: GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH
               value: /var/lib/grafana/dashboards/cloudpulse.json
+            # Grafana is written in Go, which by default doesn't know about the container's memory limit
+            # and cleans up memory lazily. GOMEMLIMIT tells Go to clean up harder before reaching 700 MiB,
+            # safely below the 1Gi limit below (without it, Grafana was OOMKilled).
+            - name: GOMEMLIMIT
+              value: 700MiB
           ports:
             - containerPort: 3000
           volumeMounts:
@@ -162,9 +167,11 @@ spec:
               mountPath: /var/lib/grafana/dashboards
           readinessProbe:
             httpGet: { path: /api/health, port: 3000 }
+          # Measured: Grafana uses ~325-355 MiB normally and spikes while refreshing panels.
+          # The old 512Mi limit got it OOMKilled, so the limit leaves ~650 MiB of headroom.
           resources:
-            requests: { cpu: 100m, memory: 128Mi }
-            limits: { cpu: 500m, memory: 512Mi }
+            requests: { cpu: 100m, memory: 384Mi }
+            limits: { cpu: 500m, memory: 1Gi }
       volumes:
         - name: datasources
           configMap: { name: grafana-datasources }
