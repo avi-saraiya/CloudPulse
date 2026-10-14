@@ -93,11 +93,21 @@ module "eks" {
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
 
-  # Core cluster add-ons (networking, DNS, kube-proxy)
+  # Cluster add-ons: networking, DNS, kube-proxy, plus the two needed for disks
   addons = {
-    vpc-cni    = { before_compute = true }
-    kube-proxy = {}
-    coredns    = {}
+    vpc-cni                = { before_compute = true }
+    eks-pod-identity-agent = { before_compute = true } # lets pods receive AWS permissions (used by the disk driver)
+    kube-proxy             = {}
+    coredns                = {}
+
+    # EBS CSI driver: creates AWS disks (EBS volumes) for PersistentVolumeClaims such as postgres-data.
+    # EKS does not include it by default, so without it the database's disk would stay "Pending" forever.
+    aws-ebs-csi-driver = {
+      pod_identity_association = [{
+        role_arn        = module.ebs_csi_pod_identity.iam_role_arn
+        service_account = "ebs-csi-controller-sa" # the driver's Kubernetes identity
+      }]
+    }
   }
 
   # The EC2 machines (worker nodes) that actually run our pods
@@ -109,4 +119,15 @@ module "eks" {
       desired_size   = var.node_count
     }
   }
+}
+
+# ---------- Permissions for the disk driver ----------
+# An IAM role that allows ONLY creating/attaching/deleting EBS volumes. EKS Pod Identity hands it to the
+# EBS CSI driver's pods, so no AWS keys are stored anywhere in the cluster.
+module "ebs_csi_pod_identity" {
+  source  = "terraform-aws-modules/eks-pod-identity/aws"
+  version = "~> 2.9"
+
+  name                      = "${var.project_name}-ebs-csi"
+  attach_aws_ebs_csi_policy = true # AWS's managed policy for the EBS CSI driver
 }
