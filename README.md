@@ -1,16 +1,11 @@
 # CloudPulse
 
-A cloud-hosted service reliability and incident-response application. It's an **educational
-Site Reliability Engineering (SRE) project** that shows how an application, a database, containers,
-Kubernetes, monitoring, CI/CD and infrastructure-as-code fit together.
+A cloud-hosted service reliability and incident-response application.
 
 CloudPulse simulates three services (**Payment API**, **Authentication API**, **Order API**). Every 5 seconds
 it generates telemetry for them, stores it in PostgreSQL, opens alerts and incidents when a threshold is
 breached, and lets an operator acknowledge and resolve those incidents from a web UI. Prometheus and Grafana
 watch the same numbers from the outside.
-
-> This is a simulation for learning, not a production monitoring product. The failures are fake and
-> deterministic, which makes the demo repeatable.
 
 ---
 
@@ -30,36 +25,6 @@ flowchart LR
         Script["scripts/deploy-aws.sh"] --> AWS["AWS: ECR + EKS<br/>(infrastructure provisioned with the AWS CLI)"]
     end
 ```
-
-| Technology | What it does in CloudPulse |
-|---|---|
-| Java 21 + Spring Boot 4.1 | REST API, simulation, alert rules, incident lifecycle, health and metrics endpoints |
-| PostgreSQL 16 | Stores services, metrics, alerts and incidents |
-| HTML/CSS/JavaScript | The operator UI: service status, incidents, acknowledge/resolve, failure buttons |
-| Docker / Docker Compose | Packages the app as an image; runs app + database together locally |
-| Kubernetes (kind) | Runs the containers with probes, resource limits and rolling updates |
-| Prometheus | Scrapes the app's metrics and evaluates alert rules |
-| Grafana | Dashboard of latency, error rate, incidents, HTTP traffic and JVM memory |
-| GitHub Actions | CI/CD: tests, builds and deploys every push to a temporary Kubernetes cluster |
-| Terraform + AWS | Infrastructure as code for a VPC, an ECR registry and an EKS cluster |
-
-**Two dashboards, two jobs.** The CloudPulse UI *manages* incidents (it's the source of truth).
-Grafana *diagnoses* behavior with charts. The UI never talks to Prometheus.
-
----
-
-## Prerequisites (versions this was tested with)
-
-| Tool | Version | Needed for |
-|---|---|---|
-| Java (JDK) | 21 | building and running the app |
-| Docker | 29 | Compose, images, kind |
-| kind | 0.33 | local Kubernetes |
-| kubectl | 1.37 | talking to Kubernetes |
-| Terraform | 1.16 | `infra/terraform` (optional) |
-| AWS CLI | 2.38 | AWS deployment (optional) |
-
-Maven doesn't need to be installed: the project includes the Maven Wrapper (`./mvnw`).
 
 ---
 
@@ -143,13 +108,13 @@ test → upload test reports → package → build image `cloudpulse:<commit>` �
 deploy → check readiness and the API. A failing test stops the pipeline before anything is deployed.
 Results are in the repository's **Actions** tab. The AWS (ECR/EKS) steps are present but commented out.
 
-## 6. AWS: EKS with Terraform (optional, costs money)
+## 6. AWS: EKS
 
-> ⚠️ **Not free:** about **$0.24/hour (~$5.75/day)** in us-east-1 while it exists (EKS control plane, 2 × t3.medium
-> nodes, NAT gateway). Prices as of October 2026; check the AWS Pricing Calculator. Destroy it when you're done.
+The infrastructure is created with the AWS CLI. It needs:
+- an EKS cluster named `cloudpulse-eks` with the **EBS CSI driver** add-on (so Postgres gets an encrypted gp3 disk)
+- an ECR repository named `cloudpulse` (immutable tags, scan on push)
 
-`infra/terraform/` creates a VPC (private subnets + 1 NAT gateway), an ECR registry (immutable tags, scan on push),
-and an EKS cluster with 2 nodes and the EBS CSI driver (so Postgres gets an encrypted gp3 disk).
+Different names or region? Set `CLUSTER=…` and/or `REGION=…` (default `us-east-1`) when running the scripts.
 
 **Prerequisites:** AWS CLI v2, plus an IAM Identity Center (SSO) login. **Don't use root access keys.**
 
@@ -158,8 +123,7 @@ aws configure sso --use-device-code          # once; profile name: cloudpulse
 aws sso login --profile cloudpulse           # when the session has expired
 export AWS_PROFILE=cloudpulse
 
-# 1. Create the infrastructure (~15-20 min). Review the plan before applying.
-cd infra/terraform && terraform init && terraform plan -out=tfplan && terraform apply tfplan && cd ../..
+# 1. Create the EKS cluster and ECR repository with the AWS CLI (see above).
 
 # 2. Deploy: pushes the image to ECR (tagged with the commit), applies k8s/ + k8s/aws/ + monitoring/, checks health
 ./scripts/deploy-aws.sh
@@ -167,13 +131,13 @@ cd infra/terraform && terraform init && terraform plan -out=tfplan && terraform 
 # 3. Use it privately (nothing is exposed to the internet)
 kubectl --context cloudpulse-eks -n cloudpulse port-forward svc/cloudpulse 8080:8080
 
-# 4. Shut everything down. Deletes the namespace first so the Postgres EBS disk is removed too,
-#    then runs terraform destroy (asks for "yes"). THIS DELETES THE DATABASE.
+# 4. Remove the app. Deletes the namespace so the Postgres EBS disk is removed too. THIS DELETES THE DATABASE.
 ./scripts/destroy-aws.sh
+# 5. Then delete the cluster and ECR repository with the AWS CLI to stop all charges.
 ```
 
-To bring it back later, repeat steps 1 and 2. Both scripts are safe to re-run, and `deploy-aws.sh` leaves your
-default `kubectl` context unchanged (AWS is only reached through `--context cloudpulse-eks`).
+Both scripts are safe to re-run, and `deploy-aws.sh` leaves your default `kubectl` context unchanged
+(AWS is only reached through `--context cloudpulse-eks`).
 
 ---
 
@@ -196,7 +160,7 @@ default `kubectl` context unchanged (AWS is only reached through `--context clou
 | GET | `/actuator/health` | health, including `/liveness` and `/readiness` |
 | GET | `/actuator/prometheus` | metrics for Prometheus |
 
-**Status rules:** DOWN if error rate ≥ 50% (DOWN always wins); DEGRADED if latency > 1000 ms or
+**Status rules:** DOWN if error rate ≥ 50%; DEGRADED if latency > 1000 ms or
 error rate > 10%; otherwise HEALTHY.
 
 ---
@@ -211,7 +175,7 @@ error rate > 10%; otherwise HEALTHY.
 6. In the UI, click **Acknowledge**.
 7. Click **Restore all**. The service returns to HEALTHY, the alert is resolved, and the Prometheus alert clears.
 8. Click **Resolve** on the incident.
-9. Show `infra/terraform/main.tf` and explain what it would create in AWS.
+9. Show `scripts/deploy-aws.sh` and explain how the same image and manifests are deployed to EKS.
 10. Name a limitation (below) and the next improvement.
 
 The step-by-step operator procedure is in `docs/runbooks/high-latency.md`.
@@ -223,27 +187,6 @@ The step-by-step operator procedure is in `docs/runbooks/high-latency.md`.
 ```bash
 docker compose down -v                     # Compose: stop and delete the database volume
 kind delete cluster --name cloudpulse      # Kubernetes: deletes the cluster and everything in it
-AWS_PROFILE=cloudpulse ./scripts/destroy-aws.sh   # AWS: stops all charges, deletes the database
+AWS_PROFILE=cloudpulse ./scripts/destroy-aws.sh   # AWS: removes the app and deletes the database
+# then delete the EKS cluster and ECR repository with the AWS CLI to stop all charges
 ```
-
-## Limitations
-
-- **One app replica.** The simulator runs inside the app, so two replicas would write every metric twice.
-  The fix would be a separate single "worker" deployment.
-- The simulation mode is kept in memory, so restarting the app returns every service to NORMAL.
-- PostgreSQL runs inside the cluster with a small volume, which is fine for a demo but not durable production storage.
-- Grafana allows anonymous read-only viewing, and is only reachable through `kubectl port-forward`.
-- No Kubernetes-level metrics (pod restarts, CPU per pod), because kube-state-metrics is not installed.
-- The metrics table grows forever; there is no retention job.
-
-## Deployment status
-
-| Layer | Status |
-|---|---|
-| App + PostgreSQL, UI, tests | Locally verified |
-| Docker / Compose | Locally verified |
-| Kubernetes (kind) | Locally verified |
-| Prometheus + Grafana | Locally verified (alert fired and cleared) |
-| GitHub Actions | Verified on GitHub (build, deploy to kind, smoke test) |
-| Terraform | Applied successfully (61 resources) on 2026-10-13 |
-| AWS / EKS | Cloud verified: UI incident flow, Prometheus alert fired and cleared, Grafana live (see `docs/IMPLEMENTATION_STATUS.md` for current state) |
