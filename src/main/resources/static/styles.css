@@ -1,64 +1,12 @@
-/* Simple, readable styling. Colors are defined once as variables and reused. */
-:root {
-    --bg: #f6f7f9;
-    --card: #ffffff;
-    --text: #1d2330;
-    --muted: #6b7280;
-    --border: #e2e5ea;
-    --healthy: #15803d;
-    --degraded: #b45309;
-    --down: #b91c1c;
-    --accent: #2563eb;
-}
+body { font-family: sans-serif; margin: 16px; }
+.muted { color: gray; }
+.error { color: red; }
 
-body {
-    margin: 0;
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-    background: var(--bg);
-    color: var(--text);
-}
+table { border-collapse: collapse; }
+th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #ddd; }
 
-header, main {
-    max-width: 1100px;
-    margin: 0 auto;
-    padding: 0 16px;
-}
-
-h1 { margin-bottom: 0; }
-.subtitle { margin-top: 4px; }
-.muted { color: var(--muted); }
-.error { color: var(--down); }
-
-section {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 12px 16px;
-    margin-bottom: 16px;
-    overflow-x: auto; /* wide tables scroll inside the card on small screens */
-}
-
-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-th, td { text-align: left; padding: 6px; border-bottom: 1px solid var(--border); white-space: nowrap; }
-th { font-size: 0.85rem; color: var(--muted); }
-
-/* Colored status "pills" — the class name is the status itself, e.g. class="badge DOWN" */
-.badge { padding: 2px 8px; border-radius: 999px; font-size: 0.8rem; font-weight: 600; color: #fff; }
-.HEALTHY, .RESOLVED { background: var(--healthy); }
-.DEGRADED, .ACKNOWLEDGED { background: var(--degraded); }
-.DOWN, .OPEN { background: var(--down); }
-
-.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-
-button {
-    background: var(--accent);
-    color: #fff;
-    border: none;
-    border-radius: 6px;
-    padding: 6px 12px;
-    cursor: pointer;
-}
-button.secondary { background: var(--muted); }
-button:disabled { opacity: 0.5; cursor: wait; }
-
-select { padding: 4px; margin-left: 4px; }
+/* Colored status pills: the class name is the status itself, e.g. class="badge DOWN" */
+.badge { padding: 2px 8px; border-radius: 8px; color: white; }
+.HEALTHY, .RESOLVED { background: green; }
+.DEGRADED, .ACKNOWLEDGED { background: orange; }
+.DOWN, .OPEN { background: red; }

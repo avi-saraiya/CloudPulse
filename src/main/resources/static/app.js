@@ -18,11 +18,11 @@ function setStatusLine(text, isError) {
 async function refresh() {
     try {
         const [services, modes, incidents] = await Promise.all([api("/services"), api("/simulation"), api("/incidents")]);
-        // Newest metric reading for each service (index 0 = newest)
-        const latest = await Promise.all(services.map(s => api(`/services/${s.id}/metrics`).then(m => m[0])));
+        // Newest metric reading for each service
+        const latest = await Promise.all(services.map(s => api(`/services/${s.id}/metrics`)));
 
         document.getElementById("services-body").innerHTML = services.map((s, i) => `<tr>
-            <td>${s.name}</td><td>${badge(s.status)}</td><td>${modes[s.name] || "NORMAL"}</td>
+            <td>${s.name}</td><td>${badge(s.status)}</td><td>${modes[s.name] || "normal"}</td>
             <td>${latest[i] ? latest[i].latencyMs.toFixed(0) + " ms" : "—"}</td>
             <td>${latest[i] ? (latest[i].errorRate * 100).toFixed(1) + " %" : "—"}</td></tr>`).join("");
 
@@ -47,8 +47,7 @@ document.addEventListener("click", async event => {
     const button = event.target.closest("button");
     if (!button) return;
     const service = document.getElementById("service-select").value;
-    const path = button.dataset.action === "restore" ? "/simulation/restore"
-        : button.dataset.action ? `/simulation/${button.dataset.action}?service=${service}`
+    const path = button.dataset.action ? `/simulation/${button.dataset.action}?service=${service}`
         : `/incidents/${button.dataset.incident}/${button.dataset.op}`;
     try {
         await api(path, "POST");
