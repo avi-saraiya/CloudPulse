@@ -1,35 +1,16 @@
-# Runs CloudPulse + PostgreSQL together on your machine:  docker compose up --build
-# Credentials come from the .env file (copy .env.example first). Nothing secret is stored here.
+# Runs CloudPulse + PostgreSQL on your machine:  docker compose up --build
 services:
-
   postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: cloudpulse
-      POSTGRES_USER: ${DB_USERNAME}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    ports:
-      - "5433:5432"            # host 5433 -> container 5432 (5433 avoids clashing with a locally installed Postgres)
-    volumes:
-      - pgdata:/var/lib/postgresql/data   # named volume: data survives `docker compose down`
-    healthcheck:               # lets the app wait until the database actually accepts connections
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d cloudpulse"]
-      interval: 5s
-      retries: 10
+      POSTGRES_PASSWORD: postgres     # matches the default in application.properties
 
   app:
-    build: .                   # builds the image from the Dockerfile in this folder
-    image: cloudpulse:local
+    build: .
     environment:
-      # Inside Docker, "localhost" is the container itself, so we reach the DB by its service name: postgres
+      # Containers reach each other by service name, so the database host is "postgres"
       DB_URL: jdbc:postgresql://postgres:5432/cloudpulse
-      DB_USERNAME: ${DB_USERNAME}
-      DB_PASSWORD: ${DB_PASSWORD}
     ports:
       - "8080:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-volumes:
-  pgdata:
+    restart: on-failure               # restarts the app if it starts before the database is ready
