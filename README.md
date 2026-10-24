@@ -16,15 +16,19 @@ watch the same numbers from the outside.
 
 ## Architecture
 
-```text
- Browser (JavaScript UI) ──HTTP──▶ Spring Boot app ──JDBC──▶ PostgreSQL
-                                     │  every 5s: generate metric → check rules → alert + incident
-                                     │
-                                     └─ /actuator/prometheus ◀──scrape every 5s── Prometheus ──▶ Grafana
-                                                                                  (alert rules)   (dashboard)
+```mermaid
+flowchart LR
+    subgraph runtime["Running app"]
+        Browser["Browser<br/>(JavaScript UI)"] -- HTTP --> App["Spring Boot app<br/>every 5s: generate metric → check rules → alert + incident"]
+        App -- JDBC --> DB[(PostgreSQL)]
+        Prom["Prometheus<br/>(alert rules)"] -- "scrape /actuator/prometheus every 5s" --> App
+        Prom --> Grafana["Grafana<br/>(dashboard)"]
+    end
 
- GitHub push ──▶ GitHub Actions: test → package → docker build → deploy to kind → smoke test
- Terraform (infra/terraform) ──▶ AWS: VPC + ECR + EKS   (deployed and verified; destroyed when not in use)
+    subgraph delivery["Build & deploy"]
+        Push["GitHub push"] --> GHA["GitHub Actions:<br/>test → package → docker build → deploy to kind → smoke test"]
+        Script["scripts/deploy-aws.sh"] --> AWS["AWS: ECR + EKS<br/>(infrastructure provisioned with the AWS CLI)"]
+    end
 ```
 
 | Technology | What it does in CloudPulse |
