@@ -28,25 +28,22 @@ flowchart LR
 
 ---
 
-## 1. Run with Docker Compose (quickest)
+## 1. Run with Docker Compose
 
 ```bash
-cp .env.example .env          # then change DB_PASSWORD in .env (.env is gitignored)
-docker compose up --build     # builds the image and starts PostgreSQL + CloudPulse
+cp .env.example .env          # Then change DB_PASSWORD in .env
+docker compose up --build     # Builds the image and starts PostgreSQL + CloudPulse
 ```
 
-Open http://localhost:8080. Stop with `docker compose down`; add `-v` to also delete the database volume.
+Open http://localhost:8080. Stop with `docker compose down`
 
 ### Environment variables
 
 | Variable | Meaning | Default when unset |
 |---|---|---|
 | `DB_URL` | JDBC URL of the database | `jdbc:postgresql://localhost:5432/cloudpulse` |
-| `DB_USERNAME` | database user | `postgres` |
-| `DB_PASSWORD` | database password | `postgres` (local development only) |
-
-Tables are created by `schema.sql` and the three services are seeded by `data.sql` on startup. Both are safe
-to re-run and never delete data.
+| `DB_USERNAME` | database username | `postgres` |
+| `DB_PASSWORD` | database password | `postgres` |
 
 ## 2. Run the tests
 
@@ -63,7 +60,7 @@ CloudPulse, Prometheus and Grafana, then checks health; safe to run again):
 ./scripts/setup-local.sh
 ```
 
-The manual steps it performs:
+Steps in the script:
 
 ```bash
 kind create cluster --name cloudpulse
@@ -79,9 +76,6 @@ kubectl apply -f k8s/
 kubectl -n cloudpulse get pods                              # wait until both are 1/1 Running
 kubectl -n cloudpulse port-forward svc/cloudpulse 8080:8080 # then open http://localhost:8080
 ```
-
-The app may restart once on first deploy if it starts before PostgreSQL is ready. Kubernetes restarts it
-automatically, and it's ready after that.
 
 ## 4. Add Prometheus and Grafana
 
