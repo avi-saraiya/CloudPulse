@@ -7,6 +7,5 @@ target/
 *.md
 k8s/
 monitoring/
-infra/
 cloudpulse/
 *:Zone.Identifier

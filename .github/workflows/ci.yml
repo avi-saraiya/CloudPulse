@@ -85,7 +85,7 @@ jobs:
           kubectl -n cloudpulse get pods -o wide || true
           kubectl -n cloudpulse logs deployment/cloudpulse --tail=100 || true
 
-      # ---- AWS version of steps 6-8 (not enabled: needs the Terraform infrastructure and AWS access) ----
+      # ---- AWS version of steps 6-8 (not enabled: needs an existing EKS cluster/ECR repo and AWS access) ----
       # Would log in to AWS with OIDC (no stored keys), push the image to ECR and deploy to EKS:
       #
       # - uses: aws-actions/configure-aws-credentials@v5

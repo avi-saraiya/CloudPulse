@@ -1,28 +1,28 @@
 #!/usr/bin/env bash
-# Shuts down ALL CloudPulse AWS resources so they stop costing money. THIS DELETES THE DATABASE.
-#   1. delete the app's namespace -> Kubernetes deletes the Postgres EBS disk it created
-#      (Terraform did not create that disk, so `terraform destroy` alone would leave it behind, still billed)
-#   2. terraform destroy -> deletes the cluster, nodes, NAT gateway, VPC, ECR images and IAM roles
+# Removes CloudPulse from the EKS cluster. THIS DELETES THE DATABASE.
+#   Deletes the app's namespace -> Kubernetes deletes the Postgres EBS disk it created
+#   (if the cluster were deleted first, that disk would be left behind, still billed).
+#
+# The cluster, its nodes, the VPC and the ECR repository are NOT deleted by this script.
+# They keep costing money until you delete them yourself with the AWS CLI.
 #
 # Usage:  AWS_PROFILE=cloudpulse ./scripts/destroy-aws.sh
-# Terraform shows what it will delete and asks you to type "yes" before anything is removed.
-# Bring everything back later with:  terraform apply  (in infra/terraform), then ./scripts/deploy-aws.sh
+#         CLUSTER=my-cluster REGION=eu-west-1 AWS_PROFILE=cloudpulse ./scripts/destroy-aws.sh   # other names
+# Bring the app back later with:  ./scripts/deploy-aws.sh
 
 set -euo pipefail
 
 NAMESPACE="cloudpulse"
 KUBE_CONTEXT="cloudpulse-eks"
-TF_DIR="infra/terraform"
+CLUSTER="${CLUSTER:-cloudpulse-eks}"
+REGION="${REGION:-us-east-1}"
 
 cd "$(dirname "$0")/.."
 
 echo "==> AWS identity"
 aws sts get-caller-identity --query Arn --output text
 
-# Step 1 only applies if the cluster still exists
-if CLUSTER=$(terraform -chdir="$TF_DIR" output -raw cluster_name 2>/dev/null) && [ -n "$CLUSTER" ] \
-   && aws eks describe-cluster --name "$CLUSTER" --query cluster.status --output text >/dev/null 2>&1; then
-    REGION=$(terraform -chdir="$TF_DIR" output -raw ecr_repository_url | cut -d. -f4)
+if aws eks describe-cluster --region "$REGION" --name "$CLUSTER" --query cluster.status --output text >/dev/null 2>&1; then
     PREVIOUS_CONTEXT=$(kubectl config current-context 2>/dev/null || true)
     aws eks update-kubeconfig --region "$REGION" --name "$CLUSTER" --alias "$KUBE_CONTEXT" >/dev/null
     [ -n "$PREVIOUS_CONTEXT" ] && [ "$PREVIOUS_CONTEXT" != "$KUBE_CONTEXT" ] && kubectl config use-context "$PREVIOUS_CONTEXT" >/dev/null
@@ -38,13 +38,13 @@ if CLUSTER=$(terraform -chdir="$TF_DIR" output -raw cluster_name 2>/dev/null) &&
     done
     kubectl --context "$KUBE_CONTEXT" get pv
 else
-    echo "==> Cluster not found, skipping the Kubernetes cleanup"
+    echo "==> Cluster $CLUSTER not found in $REGION, nothing to clean up"
 fi
 
-# Step 2: delete everything Terraform created. Pass -auto-approve as an argument to skip the "yes" prompt.
-echo "==> terraform destroy"
-terraform -chdir="$TF_DIR" destroy "$@"
-
-# Forget the deleted cluster in ~/.kube/config
+# Forget the cluster in ~/.kube/config
 kubectl config delete-context "$KUBE_CONTEXT" >/dev/null 2>&1 || true
-echo "==> Done. AWS resources for CloudPulse have been destroyed."
+cat <<EOF
+==> Done. CloudPulse has been removed from $CLUSTER.
+The EKS cluster, nodes, VPC/NAT gateway and ECR repository still exist and are still billed.
+Delete them with the AWS CLI when you no longer need them.
+EOF

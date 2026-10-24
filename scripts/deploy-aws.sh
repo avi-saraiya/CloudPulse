@@ -1,22 +1,24 @@
 #!/usr/bin/env bash
-# Deploys CloudPulse to the EKS cluster created by infra/terraform:
+# Deploys CloudPulse to an existing EKS cluster:
 #   connect kubectl -> build image -> push to ECR -> disk class + secret -> PostgreSQL -> CloudPulse
 #   -> Prometheus + Grafana -> health check
 #
-# Prerequisites: `terraform apply` has finished in infra/terraform, and you are logged in to AWS
-# (aws sso login --profile cloudpulse). Usage:
+# Prerequisites: an EKS cluster (with the EBS CSI driver add-on) and an ECR repository named "cloudpulse"
+# (immutable tags) already exist, and you are logged in to AWS (aws sso login --profile cloudpulse). Usage:
 #   AWS_PROFILE=cloudpulse ./scripts/deploy-aws.sh
+#   CLUSTER=my-cluster REGION=eu-west-1 AWS_PROFILE=cloudpulse ./scripts/deploy-aws.sh   # other names
 # Safe to run again: it skips or updates what already exists.
 
 set -euo pipefail
 
 NAMESPACE="cloudpulse"
 KUBE_CONTEXT="cloudpulse-eks"   # a name for the EKS entry in ~/.kube/config, so we never touch the kind cluster
-TF_DIR="infra/terraform"
+CLUSTER="${CLUSTER:-cloudpulse-eks}"
+REGION="${REGION:-us-east-1}"
 
 cd "$(dirname "$0")/.."
 
-for tool in aws docker kubectl terraform openssl git; do
+for tool in aws docker kubectl openssl git; do
     command -v "$tool" >/dev/null 2>&1 || { echo "ERROR: '$tool' is not installed or not on PATH." >&2; exit 1; }
 done
 
@@ -24,10 +26,10 @@ done
 echo "==> AWS identity"
 aws sts get-caller-identity --query Arn --output text
 
-# 2. Read the names Terraform created (see infra/terraform/outputs.tf)
-ECR_URL=$(terraform -chdir="$TF_DIR" output -raw ecr_repository_url)
-CLUSTER=$(terraform -chdir="$TF_DIR" output -raw cluster_name)
-REGION=$(echo "$ECR_URL" | cut -d. -f4)          # <account>.dkr.ecr.<region>.amazonaws.com/cloudpulse
+# 2. Look up the ECR repository (<account>.dkr.ecr.<region>.amazonaws.com/cloudpulse)
+ECR_URL=$(aws ecr describe-repositories --region "$REGION" --repository-names cloudpulse \
+    --query 'repositories[0].repositoryUri' --output text) \
+    || { echo "ERROR: ECR repository 'cloudpulse' not found in $REGION. Create it first." >&2; exit 1; }
 TAG=$(git rev-parse --short HEAD)                 # immutable image tag = current commit
 IMAGE="$ECR_URL:$TAG"
 
@@ -93,5 +95,6 @@ Nothing is exposed to the internet. Open each in its own terminal:
   kubectl --context $KUBE_CONTEXT -n $NAMESPACE port-forward svc/prometheus 9090:9090   -> http://localhost:9090
   kubectl --context $KUBE_CONTEXT -n $NAMESPACE port-forward svc/grafana 3000:3000      -> http://localhost:3000
 
-Shut everything down (stops all charges, deletes the database):  AWS_PROFILE=$AWS_PROFILE ./scripts/destroy-aws.sh
+Remove the app and its database disk:  AWS_PROFILE=$AWS_PROFILE ./scripts/destroy-aws.sh
+(the cluster itself keeps running and costing money until you delete it with the AWS CLI)
 EOF
