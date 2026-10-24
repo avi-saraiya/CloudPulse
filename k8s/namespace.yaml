@@ -1,5 +1,4 @@
-# A namespace is a folder inside the cluster: everything CloudPulse-related lives in "cloudpulse",
-# so it can be listed (kubectl get all -n cloudpulse) or deleted in one go.
+# Everything CloudPulse runs in the "cloudpulse" namespace, so it can be listed or deleted in one go
 apiVersion: v1
 kind: Namespace
 metadata:

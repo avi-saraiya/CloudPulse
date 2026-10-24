@@ -1,25 +1,10 @@
-# The CloudPulse application in Kubernetes.
-
-# 1. ConfigMap: non-secret settings, injected into the container as environment variables.
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: cloudpulse-config
-  namespace: cloudpulse
-data:
-  # "postgres" is the name of the Service in postgres.yaml: Kubernetes DNS turns it into the DB pod's address
-  DB_URL: jdbc:postgresql://postgres:5432/cloudpulse
----
-# 2. Deployment: keeps the app running, restarts it if it crashes, and rolls out new versions.
+# The CloudPulse app. One replica: the 5-second simulator runs inside it, so two would write every metric twice.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: cloudpulse
   namespace: cloudpulse
 spec:
-  # ONE replica on purpose: the 5-second simulator runs inside the app, so 2 replicas would write
-  # every metric twice. (A real system would move the simulator into its own single worker.)
-  replicas: 1
   selector:
     matchLabels:
       app: cloudpulse
@@ -28,50 +13,17 @@ spec:
       labels:
         app: cloudpulse
     spec:
-      securityContext:
-        runAsNonRoot: true      # refuse to start if the image tries to run as root
-        runAsUser: 100          # the "cloudpulse" user created in the Dockerfile
       containers:
         - name: cloudpulse
-          image: cloudpulse:local          # built locally and loaded with `kind load docker-image`
-          imagePullPolicy: IfNotPresent    # use the loaded image instead of pulling from a registry
-          ports:
-            - containerPort: 8080
-          envFrom:
-            - configMapRef:
-                name: cloudpulse-config    # sets DB_URL
+          image: cloudpulse:local          # built locally and copied in with `kind load docker-image`
           env:
-            - name: DB_USERNAME
-              valueFrom:
-                secretKeyRef: { name: cloudpulse-db, key: username }
-            - name: DB_PASSWORD
-              valueFrom:
-                secretKeyRef: { name: cloudpulse-db, key: password }
-          securityContext:
-            allowPrivilegeEscalation: false
-          # Resource requests = what the scheduler reserves; limits = the most the container may use.
-          resources:
-            requests: { cpu: 250m, memory: 512Mi }
-            limits: { cpu: "1", memory: 768Mi }
-          # Startup probe: give Spring Boot up to 150s (30 x 5s) to start before the other probes begin.
-          startupProbe:
-            httpGet: { path: /actuator/health/liveness, port: 8080 }
-            periodSeconds: 5
-            failureThreshold: 30
-          # Liveness: "is the process stuck?" If it fails 3 times, Kubernetes restarts the container.
-          # It deliberately does NOT check the database, so a DB outage cannot cause a restart loop.
-          livenessProbe:
-            httpGet: { path: /actuator/health/liveness, port: 8080 }
-            periodSeconds: 10
-            failureThreshold: 3
-          # Readiness: "can it serve requests right now?" Includes the DB check; if it fails,
-          # the pod just stops receiving traffic (no restart).
+            - name: DB_URL
+              value: jdbc:postgresql://postgres:5432/cloudpulse
+          # Ready once /actuator/health is UP (which includes the database), so `rollout status` waits for it
           readinessProbe:
-            httpGet: { path: /actuator/health/readiness, port: 8080 }
-            periodSeconds: 5
+            httpGet: { path: /actuator/health, port: 8080 }
 ---
-# 3. Service: a stable address "cloudpulse:8080" inside the cluster that forwards to the pod.
-# ClusterIP = internal only. We reach it from our laptop with `kubectl port-forward`.
+# Gives the app the address "cloudpulse:8080" inside the cluster. Reach it with `kubectl port-forward`.
 apiVersion: v1
 kind: Service
 metadata:
@@ -82,4 +34,3 @@ spec:
     app: cloudpulse
   ports:
     - port: 8080
-      targetPort: 8080

@@ -1,7 +1,4 @@
-# Prometheus: every 5 seconds it downloads ("scrapes") http://cloudpulse:8080/actuator/prometheus,
-# stores the numbers as time series, and evaluates the alert rules below.
-
-# 1. ConfigMap holding two files: the main config and the alert rules.
+# Prometheus: every 5 seconds it scrapes http://cloudpulse:8080/actuator/prometheus and checks the alert rules.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -10,55 +7,34 @@ metadata:
 data:
   prometheus.yml: |
     global:
-      scrape_interval: 5s          # how often to collect metrics
-      evaluation_interval: 5s      # how often to check the alert rules
+      scrape_interval: 5s
+      evaluation_interval: 5s
     rule_files:
       - /etc/prometheus/alert-rules.yml
     scrape_configs:
       - job_name: cloudpulse
         metrics_path: /actuator/prometheus
         static_configs:
-          - targets: ["cloudpulse:8080"]   # the Kubernetes Service name from k8s/cloudpulse.yaml
+          - targets: ["cloudpulse:8080"]
 
+  # "for: 30s" = the condition must stay true for 30 seconds before the alert fires
   alert-rules.yml: |
     groups:
       - name: cloudpulse
         rules:
-          # "for: 30s" = the condition must stay true for 30 seconds before the alert FIRES.
-          # Until then it is PENDING. This avoids alerting on a single short blip.
           - alert: CloudPulseHighLatency
-            expr: max by (service) (cloudpulse_service_latency_ms) > 1000
+            expr: cloudpulse_service_latency_ms > 1000
             for: 30s
-            labels: { severity: warning }
-            annotations:
-              summary: "High latency on {{ $labels.service }}"
-              description: "Latency is {{ $value }} ms (threshold 1000 ms). See docs/runbooks/high-latency.md"
-
           - alert: CloudPulseHighErrorRate
-            expr: max by (service) (cloudpulse_service_error_rate) > 0.10
+            expr: cloudpulse_service_error_rate > 0.10
             for: 30s
-            labels: { severity: warning }
-            annotations:
-              summary: "High error rate on {{ $labels.service }}"
-              description: "Error rate is {{ $value | humanizePercentage }} (threshold 10%)"
-
-          # "up" is created by Prometheus itself: 1 if the last scrape worked, 0 if it failed.
-          - alert: CloudPulseTargetDown
-            expr: up{job="cloudpulse"} == 0
-            for: 30s
-            labels: { severity: critical }
-            annotations:
-              summary: "Prometheus cannot scrape CloudPulse"
-              description: "The CloudPulse metrics endpoint has been unreachable for 30 seconds."
 ---
-# 2. Deployment running the Prometheus server with the files above mounted in /etc/prometheus.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: prometheus
   namespace: cloudpulse
 spec:
-  replicas: 1
   selector:
     matchLabels:
       app: prometheus
@@ -70,25 +46,16 @@ spec:
       containers:
         - name: prometheus
           image: prom/prometheus:v3.15.0
-          args:
-            - --config.file=/etc/prometheus/prometheus.yml
-            - --storage.tsdb.retention.time=1d      # keep only one day of data (it's a demo)
-          ports:
-            - containerPort: 9090
+          args: ["--config.file=/etc/prometheus/prometheus.yml"]
           volumeMounts:
             - name: config
-              mountPath: /etc/prometheus
-          readinessProbe:
-            httpGet: { path: /-/ready, port: 9090 }
-          resources:
-            requests: { cpu: 100m, memory: 256Mi }
-            limits: { cpu: 500m, memory: 512Mi }
+              mountPath: /etc/prometheus   # the two files from the ConfigMap above
       volumes:
         - name: config
           configMap:
             name: prometheus-config
 ---
-# 3. Service so Grafana can reach Prometheus at http://prometheus:9090
+# Lets Grafana reach Prometheus at http://prometheus:9090
 apiVersion: v1
 kind: Service
 metadata:

@@ -1,136 +1,45 @@
-# Grafana: draws charts from the data stored in Prometheus.
-# Everything (data source + dashboard) is "provisioned" from these ConfigMaps, so a fresh install
-# comes up ready to use: nothing has to be clicked together by hand.
-
-# 1. Data source: tells Grafana where Prometheus is.
+# Grafana: charts from Prometheus. Login admin / admin.
+# Grafana loads its data source and dashboard from files in /etc/grafana/provisioning when it starts.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: grafana-datasources
+  name: grafana-config
   namespace: cloudpulse
 data:
+  # Where Prometheus is
   datasources.yaml: |
     apiVersion: 1
     datasources:
       - name: Prometheus
-        uid: prometheus              # the dashboard panels refer to this uid
         type: prometheus
-        url: http://prometheus:9090  # the Service from prometheus.yaml
+        url: http://prometheus:9090
         isDefault: true
----
-# 2. Dashboard provider: tells Grafana to load every dashboard JSON file found in /var/lib/grafana/dashboards
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: grafana-dashboard-provider
-  namespace: cloudpulse
-data:
-  provider.yaml: |
+  # Load every dashboard .json file found in this folder
+  dashboards.yaml: |
     apiVersion: 1
     providers:
       - name: cloudpulse
-        folder: CloudPulse
-        type: file
         options:
-          path: /var/lib/grafana/dashboards
----
-# 3. The dashboard itself (Grafana's JSON format). Each panel has a PromQL query in "expr".
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: grafana-dashboard
-  namespace: cloudpulse
-data:
+          path: /etc/grafana/provisioning/dashboards
+  # The dashboard: two charts, each with a PromQL query in "expr"
   cloudpulse.json: |
     {
-      "uid": "cloudpulse",
-      "title": "CloudPulse Overview",
+      "title": "CloudPulse",
       "refresh": "5s",
-      "time": { "from": "now-15m", "to": "now" },
-      "schemaVersion": 39,
       "panels": [
-        {
-          "id": 1, "type": "timeseries", "title": "Simulated latency per service (alert above 1000 ms)",
-          "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] },
-          "targets": [ { "refId": "A", "expr": "cloudpulse_service_latency_ms", "legendFormat": "{{service}}" } ]
-        },
-        {
-          "id": 2, "type": "timeseries", "title": "Simulated error rate per service (alert above 10%)",
-          "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
-          "targets": [ { "refId": "A", "expr": "cloudpulse_service_error_rate", "legendFormat": "{{service}}" } ]
-        },
-        {
-          "id": 3, "type": "stat", "title": "Open incidents",
-          "gridPos": { "x": 0, "y": 8, "w": 6, "h": 5 },
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "targets": [ { "refId": "A", "expr": "cloudpulse_open_incidents" } ]
-        },
-        {
-          "id": 4, "type": "stat", "title": "Firing Prometheus alerts",
-          "gridPos": { "x": 6, "y": 8, "w": 6, "h": 5 },
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "targets": [ { "refId": "A", "expr": "count(ALERTS{alertstate=\"firing\"}) or vector(0)" } ]
-        },
-        {
-          "id": 5, "type": "stat", "title": "CloudPulse target up (1 = scraped OK)",
-          "gridPos": { "x": 12, "y": 8, "w": 6, "h": 5 },
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "targets": [ { "refId": "A", "expr": "up{job=\"cloudpulse\"}" } ]
-        },
-        {
-          "id": 6, "type": "stat", "title": "App uptime",
-          "gridPos": { "x": 18, "y": 8, "w": 6, "h": 5 },
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] } }, "overrides": [] },
-          "targets": [ { "refId": "A", "expr": "process_uptime_seconds{job=\"cloudpulse\"}" } ]
-        },
-        {
-          "id": 7, "type": "timeseries", "title": "Real HTTP requests per second (by endpoint)",
-          "gridPos": { "x": 0, "y": 13, "w": 12, "h": 8 },
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
-          "targets": [ { "refId": "A", "expr": "sum by (uri) (rate(http_server_requests_seconds_count{uri!~\"/actuator.*\"}[1m]))", "legendFormat": "{{uri}}" } ]
-        },
-        {
-          "id": 8, "type": "timeseries", "title": "Real HTTP latency p50 / p95 / p99",
-          "gridPos": { "x": 12, "y": 13, "w": 12, "h": 8 },
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
-          "targets": [
-            { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(http_server_requests_seconds_bucket{uri!~\"/actuator.*\"}[1m])))", "legendFormat": "p50" },
-            { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{uri!~\"/actuator.*\"}[1m])))", "legendFormat": "p95" },
-            { "refId": "C", "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{uri!~\"/actuator.*\"}[1m])))", "legendFormat": "p99" }
-          ]
-        },
-        {
-          "id": 9, "type": "timeseries", "title": "HTTP 5xx errors per second",
-          "gridPos": { "x": 0, "y": 21, "w": 12, "h": 8 },
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
-          "targets": [ { "refId": "A", "expr": "sum(rate(http_server_requests_seconds_count{status=~\"5..\"}[1m])) or vector(0)", "legendFormat": "5xx" } ]
-        },
-        {
-          "id": 10, "type": "timeseries", "title": "JVM heap memory used",
-          "gridPos": { "x": 12, "y": 21, "w": 12, "h": 8 },
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
-          "targets": [ { "refId": "A", "expr": "sum(jvm_memory_used_bytes{area=\"heap\"})", "legendFormat": "heap used" } ]
-        }
+        { "type": "timeseries", "title": "Latency (ms)", "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+          "targets": [ { "expr": "cloudpulse_service_latency_ms", "legendFormat": "{{service}}" } ] },
+        { "type": "timeseries", "title": "Error rate", "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+          "targets": [ { "expr": "cloudpulse_service_error_rate", "legendFormat": "{{service}}" } ] }
       ]
     }
 ---
-# 4. Deployment running Grafana with the three ConfigMaps mounted where Grafana looks for them.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: grafana
   namespace: cloudpulse
 spec:
-  replicas: 1
   selector:
     matchLabels:
       app: grafana
@@ -142,45 +51,19 @@ spec:
       containers:
         - name: grafana
           image: grafana/grafana:13.2.4
-          env:
-            # Local demo convenience: anyone who can reach Grafana (only via port-forward) can VIEW dashboards.
-            - name: GF_AUTH_ANONYMOUS_ENABLED
-              value: "true"
-            - name: GF_AUTH_ANONYMOUS_ORG_ROLE
-              value: Viewer
-            # Open our dashboard as the home page
-            - name: GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH
-              value: /var/lib/grafana/dashboards/cloudpulse.json
-            # Grafana is written in Go, which by default doesn't know about the container's memory limit
-            # and cleans up memory lazily. GOMEMLIMIT tells Go to clean up harder before reaching 700 MiB,
-            # safely below the 1Gi limit below (without it, Grafana was OOMKilled).
-            - name: GOMEMLIMIT
-              value: 700MiB
-          ports:
-            - containerPort: 3000
           volumeMounts:
-            - name: datasources
-              mountPath: /etc/grafana/provisioning/datasources
-            - name: dashboard-provider
-              mountPath: /etc/grafana/provisioning/dashboards
-            - name: dashboard
-              mountPath: /var/lib/grafana/dashboards
-          readinessProbe:
-            httpGet: { path: /api/health, port: 3000 }
-          # Measured: Grafana uses ~325-355 MiB normally and spikes while refreshing panels.
-          # The old 512Mi limit got it OOMKilled, so the limit leaves ~650 MiB of headroom.
-          resources:
-            requests: { cpu: 100m, memory: 384Mi }
-            limits: { cpu: 500m, memory: 1Gi }
+            - name: config
+              mountPath: /etc/grafana/provisioning
       volumes:
-        - name: datasources
-          configMap: { name: grafana-datasources }
-        - name: dashboard-provider
-          configMap: { name: grafana-dashboard-provider }
-        - name: dashboard
-          configMap: { name: grafana-dashboard }
+        - name: config
+          configMap:
+            name: grafana-config
+            items:   # which ConfigMap key becomes which file
+              - { key: datasources.yaml, path: datasources/datasources.yaml }
+              - { key: dashboards.yaml, path: dashboards/dashboards.yaml }
+              - { key: cloudpulse.json, path: dashboards/cloudpulse.json }
 ---
-# 5. Service: reach Grafana with `kubectl port-forward -n cloudpulse svc/grafana 3000:3000`
+# Reach Grafana with `kubectl -n cloudpulse port-forward svc/grafana 3000:3000`
 apiVersion: v1
 kind: Service
 metadata:

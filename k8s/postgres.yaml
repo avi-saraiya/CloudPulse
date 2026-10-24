@@ -1,28 +1,10 @@
-# PostgreSQL for LOCAL / DEMO use only. On AWS you would normally use a managed database (RDS) instead.
-# The password comes from the Secret "cloudpulse-db", created by hand (see README), never committed to Git.
-
-# 1. PersistentVolumeClaim: asks the cluster for 1 GiB of disk that survives pod restarts.
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: postgres-data
-  namespace: cloudpulse
-spec:
-  accessModes: ["ReadWriteOnce"]
-  resources:
-    requests:
-      storage: 1Gi
----
-# 2. Deployment: runs one PostgreSQL container and mounts the disk above.
+# PostgreSQL with no disk: the data lives inside the pod and is wiped when the pod restarts.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: postgres
   namespace: cloudpulse
 spec:
-  replicas: 1
-  strategy:
-    type: Recreate          # never run two databases on the same disk at once
   selector:
     matchLabels:
       app: postgres
@@ -34,35 +16,13 @@ spec:
       containers:
         - name: postgres
           image: postgres:16-alpine
-          ports:
-            - containerPort: 5432
           env:
             - name: POSTGRES_DB
               value: cloudpulse
-            - name: POSTGRES_USER
-              valueFrom:
-                secretKeyRef: { name: cloudpulse-db, key: username }
             - name: POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef: { name: cloudpulse-db, key: password }
-            - name: PGDATA                       # a sub-folder, because the volume root contains "lost+found"
-              value: /var/lib/postgresql/data/pgdata
-          volumeMounts:
-            - name: data
-              mountPath: /var/lib/postgresql/data
-          readinessProbe:                        # only send traffic once Postgres accepts connections
-            exec:
-              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d cloudpulse"]
-            periodSeconds: 5
-          resources:
-            requests: { cpu: 100m, memory: 256Mi }
-            limits: { cpu: 500m, memory: 512Mi }
-      volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: postgres-data
+              value: postgres          # matches the default in application.properties
 ---
-# 3. Service: gives the database a stable DNS name inside the cluster: "postgres" (port 5432).
+# Gives the database the address "postgres:5432" inside the cluster
 apiVersion: v1
 kind: Service
 metadata:
